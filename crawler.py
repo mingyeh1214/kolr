@@ -46,15 +46,15 @@ def open_page(url, driver=None):
         driver.get(url)
 
         # 等待使用者手動登入
-        print("請在 45 秒內手動登入...")
-        time.sleep(45)
+        print("請在 90 秒內手動登入...")
+        time.sleep(90)
         
         # 手動登入後再重新進入 url
         print("再次載入頁面...")
         driver.get(url)
         
         print("等待頁面載入...")
-        time.sleep(3)  # 給頁面一些時間載入
+        time.sleep(2)  # 給頁面一些時間載入
         
         print(f"頁面標題: {driver.title}")
         print(f"當前 URL: {driver.current_url}")
@@ -105,57 +105,126 @@ def get_page_info(driver):
         return None, None
 
 
-def click_next_button(driver):
-    """點擊下一頁按鈕，返回是否成功"""
+def click_next_button(driver, max_wait_time=30):
+    """點擊下一頁按鈕，返回是否成功。會等待按鈕可點擊（頁面載入完畢）"""
     try:
-        # 等待按鈕出現
-        WebDriverWait(driver, 10).until(
-            EC.element_to_be_clickable((By.CSS_SELECTOR, ".ant-btn.css-var-r0.ant-btn-primary.pagination__PageButton-sc-1352b46e-0.hPROFu"))
+        # 等待按鈕出現，增加等待時間確保頁面載入完畢
+        print("等待下一頁按鈕載入...")
+        next_button = WebDriverWait(driver, max_wait_time).until(
+            EC.presence_of_element_located((By.CSS_SELECTOR, ".ant-btn.css-var-r0.ant-btn-primary.pagination__PageButton-sc-1352b46e-0.hPROFu"))
         )
-        next_button = driver.find_element(
-            By.CSS_SELECTOR,
-            ".ant-btn.css-var-r0.ant-btn-primary.pagination__PageButton-sc-1352b46e-0.hPROFu"
-        )
-        # 檢查按鈕是否可用（沒有 disabled 屬性）
+        
+        # 檢查按鈕是否被禁用（最後一頁）
         if next_button.get_attribute("disabled"):
-            print("已到達最後一頁")
+            print("已到達最後一頁（按鈕被禁用）")
             return False
-        next_button.click()
-        print("已點擊下一頁按鈕")
-        return True
+        
+        # 嘗試點擊按鈕，如果不可點擊則重試（最多5次，每次等待1秒）
+        max_retries = 5
+        for retry_count in range(max_retries):
+            try:
+                # 重新獲取按鈕元素
+                next_button = driver.find_element(
+                    By.CSS_SELECTOR,
+                    ".ant-btn.css-var-r0.ant-btn-primary.pagination__PageButton-sc-1352b46e-0.hPROFu"
+                )
+                
+                # 再次檢查是否被禁用
+                if next_button.get_attribute("disabled"):
+                    print("已到達最後一頁（按鈕被禁用）")
+                    return False
+                
+                # 檢查按鈕是否可點擊
+                if next_button.is_enabled() and next_button.is_displayed():
+                    # 滾動到按鈕位置確保可見
+                    driver.execute_script("arguments[0].scrollIntoView({behavior: 'smooth', block: 'center'});", next_button)
+                    time.sleep(0.3)
+                    
+                    # 嘗試點擊
+                    next_button.click()
+                    print("已點擊下一頁按鈕")
+                    return True
+                else:
+                    # 如果按鈕不可點擊，等待1秒後重試
+                    if retry_count < max_retries - 1:
+                        print(f"按鈕尚未可點擊，等待1秒後重試（第 {retry_count + 1}/{max_retries} 次）...")
+                        time.sleep(1)
+                    else:
+                        print("按鈕在5秒內仍無法點擊")
+                        return False
+            except Exception as click_error:
+                # 如果點擊失敗，等待1秒後重試
+                if retry_count < max_retries - 1:
+                    print(f"點擊失敗，等待1秒後重試（第 {retry_count + 1}/{max_retries} 次）...")
+                    time.sleep(1)
+                else:
+                    print(f"點擊失敗，已達最大重試次數: {click_error}")
+                    return False
+        
+        return False
     except Exception as e:
-        print(f"找不到或無法點擊分頁按鈕: {e}")
+        # 如果等待超時，可能是最後一頁或頁面載入問題
+        try:
+            # 再次嘗試查找按鈕，檢查是否被禁用
+            next_button = driver.find_element(
+                By.CSS_SELECTOR,
+                ".ant-btn.css-var-r0.ant-btn-primary.pagination__PageButton-sc-1352b46e-0.hPROFu"
+            )
+            if next_button.get_attribute("disabled"):
+                print("已到達最後一頁（按鈕被禁用）")
+                return False
+        except:
+            pass
+        
+        print(f"等待下一頁按鈕超時或發生錯誤: {e}")
         return False
 
 
 def scrape_and_save_links(driver, csv_filename='link.csv'):
-    """抓取當前頁面的連結並寫入 CSV"""
+    """抓取當前頁面的連結並寫入 CSV，如果無法抓取則重試（最多5次）"""
     file_exists = os.path.exists(csv_filename)
+    max_retries = 5
     
-    # 抓取當前頁面的連結
-    try:
-        elements = driver.find_elements(By.CSS_SELECTOR, "div.ant-col.ant-col-24.css-var-r0 a[data-sns-link]")
-        sns_links = [el.get_attribute("data-sns-link") for el in elements if el.get_attribute("data-sns-link")]
-        
-        print(f"\n當前頁面抓取到 {len(sns_links)} 個連結")
-        
-        if sns_links:
-            write_header = not file_exists  # 若檔案不存在要寫 header
-            with open(csv_filename, 'a', newline='', encoding='utf-8') as csvfile:
-                writer = csv.writer(csvfile)
-                if write_header:
-                    writer.writerow(['link', 'image_done'])
-                for link in sns_links:
-                    if link:  # 確保連結不為空
-                        writer.writerow([link, ""])  # image_done 預設空字串
-            print(f"已寫入 {len(sns_links)} 筆連結到 {csv_filename}")
-        else:
-            print("沒有連結需要寫入 CSV")
-        
-        return len(sns_links)
-    except Exception as e:
-        print(f"抓取連結時發生錯誤: {e}")
-        return 0
+    # 重試機制：如果無法抓取資料，等待1秒後重試，最多5次
+    for retry_count in range(max_retries):
+        try:
+            # 抓取當前頁面的連結
+            elements = driver.find_elements(By.CSS_SELECTOR, "div.ant-col.ant-col-24.css-var-r0 a[data-sns-link]")
+            sns_links = [el.get_attribute("data-sns-link") for el in elements if el.get_attribute("data-sns-link")]
+            
+            # 如果成功抓到連結，處理並返回
+            if sns_links and len(sns_links) > 0:
+                print(f"\n當前頁面抓取到 {len(sns_links)} 個連結")
+                
+                write_header = not file_exists  # 若檔案不存在要寫 header
+                with open(csv_filename, 'a', newline='', encoding='utf-8') as csvfile:
+                    writer = csv.writer(csvfile)
+                    if write_header:
+                        writer.writerow(['link', 'image_done'])
+                    for link in sns_links:
+                        if link:  # 確保連結不為空
+                            writer.writerow([link, ""])  # image_done 預設空字串
+                print(f"已寫入 {len(sns_links)} 筆連結到 {csv_filename}")
+                return len(sns_links)
+            else:
+                # 如果沒有抓到連結，且還有重試機會，則等待後重試
+                if retry_count < max_retries - 1:
+                    print(f"無法抓取到連結，等待1秒後重試（第 {retry_count + 1}/{max_retries} 次）...")
+                    time.sleep(1)
+                else:
+                    print("無法抓取到連結，已達最大重試次數")
+                    return 0
+                    
+        except Exception as e:
+            # 如果發生錯誤，且還有重試機會，則等待後重試
+            if retry_count < max_retries - 1:
+                print(f"抓取連結時發生錯誤: {e}，等待1秒後重試（第 {retry_count + 1}/{max_retries} 次）...")
+                time.sleep(1)
+            else:
+                print(f"抓取連結時發生錯誤，已達最大重試次數: {e}")
+                return 0
+    
+    return 0
 
 
 def extract_username_from_url(url):
@@ -454,12 +523,27 @@ def main():
                 print(f"\n達到安全上限（{max_pages} 頁），結束爬取")
                 break
             
-            # 嘗試點擊下一頁
+            # 嘗試點擊下一頁（會等待按鈕可點擊，確保頁面載入完畢）
             if not click_next_button(driver):
-                print("\n無法點擊下一頁按鈕，結束爬取")
-                break
+                # 如果無法點擊，再次確認是否為最後一頁
+                current_page_check, total_pages_check = get_page_info(driver)
+                if current_page_check is not None and total_pages_check is not None:
+                    if current_page_check >= total_pages_check:
+                        print(f"\n確認已到達最後一頁（{current_page_check} / {total_pages_check}），結束爬取")
+                        break
+                    else:
+                        print(f"\n警告：無法點擊下一頁按鈕，但頁碼顯示還有更多頁（{current_page_check} / {total_pages_check}）")
+                        print("等待更長時間後重試...")
+                        time.sleep(5)
+                        # 重試一次
+                        if not click_next_button(driver):
+                            print("重試失敗，結束爬取")
+                            break
+                else:
+                    print("\n無法獲取頁碼資訊且無法點擊下一頁，結束爬取")
+                    break
             
-            # 等待頁面載入
+            # 等待新頁面載入完畢
             print("等待新頁面載入...")
             time.sleep(3)
             
