@@ -20,6 +20,7 @@ export default function Home() {
   const [error, setError] = useState<string | null>(null);
   const [currentPosition, setCurrentPosition] = useState(0);
   const [viewMode, setViewMode] = useState<ViewMode>('newtab');
+  const [completedCount, setCompletedCount] = useState<number | null>(null);
 
   // 載入當前項目
   const loadCurrentItem = async (index?: number) => {
@@ -62,9 +63,23 @@ export default function Home() {
     }
   };
 
+  // 載入已完成項目數量
+  const loadCompletedCount = async () => {
+    try {
+      const response = await fetch('/api/completed-count');
+      if (response.ok) {
+        const result = await response.json();
+        setCompletedCount(result.completedCount);
+      }
+    } catch (err) {
+      console.error('載入已完成數量錯誤:', err);
+    }
+  };
+
   // 初始載入
   useEffect(() => {
     loadCurrentItem();
+    loadCompletedCount();
   }, []);
 
   // 當 viewMode 為 newtab 且有 URL 時，自動在新分頁開啟
@@ -120,6 +135,8 @@ export default function Home() {
       const result = await response.json();
       
       if (result.success) {
+        // 更新已完成數量
+        await loadCompletedCount();
         // 載入下一個項目
         if (result.nextIndex !== null) {
           await loadCurrentItem(result.nextIndex);
@@ -168,6 +185,8 @@ export default function Home() {
       const result = await response.json();
       
       if (result.success) {
+        // 更新已完成數量
+        await loadCompletedCount();
         // 載入下一個項目
         if (result.nextIndex !== null) {
           await loadCurrentItem(result.nextIndex);
@@ -243,6 +262,11 @@ export default function Home() {
         {data && !data.currentUrl && (
           <div className="flex flex-col items-center justify-center h-full gap-4">
             <div className="text-white text-lg">沒有未完成的項目</div>
+            {completedCount !== null && (
+              <div className="bg-green-500/20 backdrop-blur-sm rounded-lg px-4 py-2 text-green-400 text-sm border border-green-500/30">
+                已完成: {completedCount} 筆
+              </div>
+            )}
             <button
               onClick={() => loadCurrentItem()}
               className="px-4 py-2 bg-white/10 hover:bg-white/20 rounded-lg text-white transition-colors"
@@ -259,6 +283,11 @@ export default function Home() {
               <div className="bg-black/60 backdrop-blur-sm rounded-lg px-3 py-1 text-white text-sm">
                 {currentPosition} / {data.total}
               </div>
+              {completedCount !== null && (
+                <div className="bg-green-500/20 backdrop-blur-sm rounded-lg px-3 py-1 text-green-400 text-sm border border-green-500/30">
+                  已完成: {completedCount}
+                </div>
+              )}
               
               {/* 查看模式選擇 */}
               <div className="bg-black/60 backdrop-blur-sm rounded-lg px-2 py-1 flex gap-1">
