@@ -505,7 +505,7 @@ def screenshot_instagram_pages(
 
 def main():
     """主函數"""
-    url = "https://app.kolr.ai/search?country_code=tw&filter_kol_type=all&follower_end_to=10000&follower_start_from=8000&gender=Female&mode=kol&platform_type=ig&sort=followerCount"
+    url = "https://app.kolr.ai/search?country_code=tw&filter_kol_type=all&follower_end_to=7999&follower_start_from=7000&gender=Female&mode=kol&platform_type=ig&sort=followerCount"
     csv_filename = "link.csv"
     max_pages = 1000  # 安全上限，防止無限循環（通常不會達到）
 
