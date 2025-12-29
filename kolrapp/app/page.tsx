@@ -13,6 +13,7 @@ interface IGLinkData {
 }
 
 type ViewMode = 'iframe' | 'newtab' | 'viewer';
+type SearchDirection = 'forward' | 'reverse';
 
 export default function Home() {
   const [data, setData] = useState<IGLinkData | null>(null);
@@ -21,16 +22,46 @@ export default function Home() {
   const [currentPosition, setCurrentPosition] = useState(0);
   const [viewMode, setViewMode] = useState<ViewMode>('newtab');
   const [completedCount, setCompletedCount] = useState<number | null>(null);
+  const [searchDirection, setSearchDirection] = useState<SearchDirection>('forward');
 
   // 載入當前項目
-  const loadCurrentItem = async (index?: number) => {
+  const loadCurrentItem = async (index?: number, direction?: SearchDirection) => {
     setLoading(true);
     setError(null);
     
     try {
-      const url = index !== undefined 
-        ? `/api/ig-links?index=${index}`
-        : '/api/ig-links';
+      const dir = direction || searchDirection;
+      let url = '/api/ig-links';
+      
+      if (index !== undefined) {
+        url = `/api/ig-links?index=${index}`;
+      } else {
+        // 如果沒有指定索引，先獲取所有未完成項目的列表
+        const listResponse = await fetch('/api/ig-links');
+        if (listResponse.ok) {
+          const listResult = await listResponse.json();
+          if (listResult.pendingIndices && listResult.pendingIndices.length > 0) {
+            // 正向：第一個，反向：最後一個
+            const targetIndex = dir === 'forward' 
+              ? listResult.pendingIndices[0]
+              : listResult.pendingIndices[listResult.pendingIndices.length - 1];
+            url = `/api/ig-links?index=${targetIndex}`;
+          } else {
+            // 沒有未完成的項目
+            setData({
+              currentIndex: -1,
+              currentUrl: null,
+              total: 0,
+              urls: [],
+              pendingIndices: [],
+              currentPosition: 0
+            });
+            setCurrentPosition(0);
+            setLoading(false);
+            return;
+          }
+        }
+      }
       
       const response = await fetch(url);
       
@@ -54,7 +85,14 @@ export default function Home() {
       }
       
       setData(result);
-      setCurrentPosition(result.currentPosition || 0);
+      // 根據方向調整位置顯示
+      // API 返回的 currentPosition 是正向位置（1-based）
+      if (dir === 'reverse') {
+        // 反向時，位置是從後往前計算：total - currentPosition + 1
+        setCurrentPosition(result.total - (result.currentPosition || 0) + 1);
+      } else {
+        setCurrentPosition(result.currentPosition || 0);
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : '發生未知錯誤');
       console.error('載入錯誤:', err);
@@ -91,28 +129,55 @@ export default function Home() {
 
   // 處理上一個
   const handlePrevious = async () => {
-    if (!data || currentPosition <= 1) return;
+    if (!data) return;
     
     // 找到當前在 pendingIndices 中的位置
     const currentPendingIndex = data.pendingIndices.indexOf(data.currentIndex);
-    if (currentPendingIndex > 0) {
-      // 找到上一個未完成項目的原始索引
-      const prevIndex = data.pendingIndices[currentPendingIndex - 1];
-      await loadCurrentItem(prevIndex);
+    
+    if (searchDirection === 'forward') {
+      // 正向：上一個是索引減 1
+      if (currentPendingIndex > 0) {
+        const prevIndex = data.pendingIndices[currentPendingIndex - 1];
+        await loadCurrentItem(prevIndex, searchDirection);
+      }
+    } else {
+      // 反向：上一個是索引加 1（因為是從後往前）
+      if (currentPendingIndex < data.pendingIndices.length - 1) {
+        const prevIndex = data.pendingIndices[currentPendingIndex + 1];
+        await loadCurrentItem(prevIndex, searchDirection);
+      }
     }
   };
 
   // 處理下一個
   const handleNext = async () => {
-    if (!data || currentPosition >= data.total) return;
+    if (!data) return;
     
     // 找到當前在 pendingIndices 中的位置
     const currentPendingIndex = data.pendingIndices.indexOf(data.currentIndex);
-    if (currentPendingIndex < data.pendingIndices.length - 1) {
-      // 找到下一個未完成項目的原始索引
-      const nextIndex = data.pendingIndices[currentPendingIndex + 1];
-      await loadCurrentItem(nextIndex);
+    
+    if (searchDirection === 'forward') {
+      // 正向：下一個是索引加 1
+      if (currentPendingIndex < data.pendingIndices.length - 1) {
+        const nextIndex = data.pendingIndices[currentPendingIndex + 1];
+        await loadCurrentItem(nextIndex, searchDirection);
+      }
+    } else {
+      // 反向：下一個是索引減 1（因為是從後往前）
+      if (currentPendingIndex > 0) {
+        const nextIndex = data.pendingIndices[currentPendingIndex - 1];
+        await loadCurrentItem(nextIndex, searchDirection);
+      }
     }
+  };
+
+  // 處理切換檢索方向
+  const handleToggleDirection = async () => {
+    const newDirection = searchDirection === 'forward' ? 'reverse' : 'forward';
+    setSearchDirection(newDirection);
+    
+    // 切換方向時，載入新方向的起始項目（正向：第一個，反向：最後一個）
+    await loadCurrentItem(undefined, newDirection);
   };
 
   // 處理放棄
@@ -223,9 +288,15 @@ export default function Home() {
         onReject={handleReject}
         onBookmark={handleBookmark}
         onNext={handleNext}
+        onToggleDirection={handleToggleDirection}
+        searchDirection={searchDirection}
         disabled={{
-          previous: !data || currentPosition <= 1,
-          next: !data || currentPosition >= data.total
+          previous: searchDirection === 'forward' 
+            ? (!data || currentPosition <= 1)
+            : (!data || currentPosition >= data.total),
+          next: searchDirection === 'forward'
+            ? (!data || currentPosition >= data.total)
+            : (!data || currentPosition <= 1)
         }}
         loading={loading}
       />

@@ -1,12 +1,16 @@
 'use client';
 
-import { ChevronLeft, X, Bookmark, ChevronRight } from 'lucide-react';
+import { ChevronLeft, X, Bookmark, ChevronRight, ArrowUpDown } from 'lucide-react';
+
+type SearchDirection = 'forward' | 'reverse';
 
 interface ControlBarProps {
   onPrevious: () => void;
   onReject: () => void;
   onBookmark: () => void;
   onNext: () => void;
+  onToggleDirection: () => void;
+  searchDirection: SearchDirection;
   disabled?: {
     previous?: boolean;
     next?: boolean;
@@ -19,6 +23,8 @@ export default function ControlBar({
   onReject,
   onBookmark,
   onNext,
+  onToggleDirection,
+  searchDirection,
   disabled = {},
   loading = false
 }: ControlBarProps) {
@@ -64,6 +70,24 @@ export default function ControlBar({
             aria-label="下一個"
           >
             <ChevronRight className="w-5 h-5 text-white" />
+          </button>
+          
+          {/* 分隔線 */}
+          <div className="h-6 w-px bg-white/20 mx-1" />
+          
+          {/* 檢索方向切換按鈕 */}
+          <button
+            onClick={onToggleDirection}
+            disabled={loading}
+            className={`p-2 rounded-full transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${
+              searchDirection === 'reverse'
+                ? 'bg-blue-500/30 hover:bg-blue-500/40'
+                : 'hover:bg-white/10'
+            }`}
+            aria-label={searchDirection === 'forward' ? '切換到反向檢索' : '切換到正向檢索'}
+            title={searchDirection === 'forward' ? '正向檢索（從前往後）' : '反向檢索（從後往前）'}
+          >
+            <ArrowUpDown className={`w-5 h-5 ${searchDirection === 'reverse' ? 'text-blue-400' : 'text-white'}`} />
           </button>
         </div>
       </div>
