@@ -50,7 +50,7 @@ def open_page(url, driver=None):
 
         # 等待使用者手動登入
         print("請在 30 秒內手動登入...")
-        time.sleep(30)
+        time.sleep(10)
 
         # 手動登入後再重新進入 url
         print("再次載入頁面...")
@@ -115,8 +115,8 @@ def click_next_button(driver, max_wait_time=30):
         next_button = WebDriverWait(driver, max_wait_time).until(
             EC.presence_of_element_located(
                 (
-                    By.CSS_SELECTOR,
-                    ".ant-btn.css-var-r0.ant-btn-primary.pagination__PageButton-sc-1352b46e-0.hPROFu",
+                    By.XPATH,
+                    "//*[@id=\"__next\"]/div[1]/main/div/div/div[2]/main/div[2]/div[3]/div/div[2]/div[1]/button[2]",
                 )
             )
         )
@@ -132,8 +132,8 @@ def click_next_button(driver, max_wait_time=30):
             try:
                 # 重新獲取按鈕元素
                 next_button = driver.find_element(
-                    By.CSS_SELECTOR,
-                    ".ant-btn.css-var-r0.ant-btn-primary.pagination__PageButton-sc-1352b46e-0.hPROFu",
+                    By.XPATH,
+                    "//*[@id=\"__next\"]/div[1]/main/div/div/div[2]/main/div[2]/div[3]/div/div[2]/div[1]/button[2]",
                 )
 
                 # 再次檢查是否被禁用
@@ -181,8 +181,8 @@ def click_next_button(driver, max_wait_time=30):
         try:
             # 再次嘗試查找按鈕，檢查是否被禁用
             next_button = driver.find_element(
-                By.CSS_SELECTOR,
-                ".ant-btn.css-var-r0.ant-btn-primary.pagination__PageButton-sc-1352b46e-0.hPROFu",
+                By.XPATH,
+                "//*[@id=\"__next\"]/div[1]/main/div/div/div[2]/main/div[2]/div[3]/div/div[2]/div[1]/button[2]",
             )
             if next_button.get_attribute("disabled"):
                 print("已到達最後一頁（按鈕被禁用）")
@@ -197,20 +197,25 @@ def click_next_button(driver, max_wait_time=30):
 def scrape_and_save_links(driver, csv_filename="link.csv"):
     """抓取當前頁面的連結並寫入 CSV，如果無法抓取則重試（最多5次）"""
     file_exists = os.path.exists(csv_filename)
-    max_retries = 5
+    max_retries = 10
 
     # 重試機制：如果無法抓取資料，等待1秒後重試，最多5次
     for retry_count in range(max_retries):
         try:
-            # 抓取當前頁面的連結
-            elements = driver.find_elements(
-                By.CSS_SELECTOR, "div.ant-col.ant-col-24.css-var-r0 a[data-sns-link]"
-            )
-            sns_links = [
-                el.get_attribute("data-sns-link")
-                for el in elements
-                if el.get_attribute("data-sns-link")
-            ]
+            # 抓取當前頁面的連結（每頁最多12筆）
+            sns_links = []
+            base_xpath = "//*[@id=\"__next\"]/div[1]/main/div/div/div[2]/main/div[2]/div[3]/div/div[1]/div/div/div/div"
+            
+            for i in range(1, 13):  # 從 div[1] 到 div[12]
+                try:
+                    xpath = f"{base_xpath}[{i}]/a"
+                    element = driver.find_element(By.XPATH, xpath)
+                    link = element.get_attribute("data-sns-link")
+                    if link:  # 確保連結不為空
+                        sns_links.append(link)
+                except:
+                    # 如果找不到該位置的元素，可能是最後一頁（少於12筆），繼續下一個
+                    continue
 
             # 如果成功抓到連結，處理並返回
             if sns_links and len(sns_links) > 0:
@@ -505,7 +510,7 @@ def screenshot_instagram_pages(
 
 def main():
     """主函數"""
-    url = "https://app.kolr.ai/search?country_code=tw&filter_kol_type=all&follower_end_to=7999&follower_start_from=7000&gender=Female&mode=kol&platform_type=ig&sort=followerCount"
+    url = "https://app.kolr.ai/search?country_code=tw&filter_kol_type=all&follower_end_to=15999&follower_start_from=15000&gender=Female&mode=kol&platform_type=ig&sort=followerCount"
     csv_filename = "link.csv"
     max_pages = 1000  # 安全上限，防止無限循環（通常不會達到）
 
